@@ -1174,7 +1174,7 @@ html[data-tema="claro"] .topo nav a.ativo { background: #ffffff; box-shadow: 0 1
   .layout { flex-direction: column; min-height: 0; }
   .topo { position: sticky; top: 0; width: auto; height: auto; min-height: 0; max-height: none; overflow: visible; z-index: 30;
     display: grid; grid-template-columns: 1fr auto; grid-template-areas: "marca ano" "nav nav"; align-items: center; gap: .5rem .6rem;
-    padding: calc(env(safe-area-inset-top) + .55rem) .9rem .55rem; border-right: 0; border-bottom: 1px solid var(--linha); }
+    padding: .55rem .9rem; border-right: 0; border-bottom: 1px solid var(--linha); }  /* a margem da barra de estado do iPhone fica por conta da página do telemóvel */
   .topo .marca { grid-area: marca; padding: 0; gap: .55rem; min-width: 0; }
   .marca .logo { width: 30px; height: 30px; border-radius: 9px; font-size: .8rem; }
   .marca .marca-txt b { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

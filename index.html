@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Controlo">
 <meta name="theme-color" content="#0e151c" id="cor-tema">
 <link rel="apple-touch-icon" href="icone-180.png">
@@ -158,7 +158,7 @@
 /* Versão para telemóvel do Controlo Empresa.
    A aplicação Flask do PC corre aqui, no browser, com o Pyodide (Python em WebAssembly). Sem servidor e sem internet:
    a base de dados é escolhida pelo utilizador, fica guardada no telemóvel e é exportada no fim. */
-const VERSAO_TELEMOVEL = "1.9.0-t2";
+const VERSAO_TELEMOVEL = "1.9.1-t3";
 const PREFIXO = location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
 const BASE = location.origin + PREFIXO + "/";
 const PASTA_DADOS = "/dados";
