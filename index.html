@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Controlo">
+<meta name="theme-color" content="#0e151c" id="cor-tema">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.json">
+<title>Controlo</title>
+<script>try { if (localStorage.getItem("tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1015; --barra: #0e151c; --card: #101820; --txt: #e8eef4; --suave: #9fb0c0; --linha: #1b2630; --borda2: #24323f;
+    --acento: #34d399; --acento-txt: #062018; --acento-bg: #0f2a22; --verde-b: #1f4a3b; --verde-txt: #6ee7b7;
+    --aviso-bg: #3a2d0e; --aviso-b: #5a4a18; --aviso-txt: #fcd34d; --erro-bg: #3a1a1a; --erro-b: #6b2a2a; --erro-txt: #fecaca;
+    --barra-h: 42px;
+  }
+  html[data-tema="claro"] {
+    color-scheme: light;
+    --bg: #f3f5f8; --barra: #eef2f6; --card: #ffffff; --txt: #0f1b26; --suave: #5b6b7b; --linha: #e3e8ee; --borda2: #d5dde6;
+    --acento: #0e9f6e; --acento-txt: #ffffff; --acento-bg: #e7f6ef; --verde-b: #a7e3c9; --verde-txt: #047857;
+    --aviso-bg: #fff4d6; --aviso-b: #f0d58a; --aviso-txt: #8a5a00; --erro-bg: #fdecec; --erro-b: #f3b4b4; --erro-txt: #991b1b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--txt);
+    font: 15px/1.45 "Plus Jakarta Sans", -apple-system, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  button { font: inherit; cursor: pointer; }
+  .oculto { display: none !important; }
+
+  /* barra de cima: base aberta e exportar */
+  #barra { position: fixed; top: 0; left: 0; right: 0; z-index: 20; background: var(--barra); border-bottom: 1px solid var(--linha);
+    padding: env(safe-area-inset-top) 10px 0; display: flex; align-items: center; gap: 8px; height: calc(var(--barra-h) + env(safe-area-inset-top)); }
+  #barra .info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+  #barra .nome { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #barra .estado { font-size: 11.5px; color: var(--suave); white-space: nowrap; }
+  #barra .estado.sujo { color: var(--aviso-txt); }
+  #barra .estado.sujo::before { content: "● "; }
+  #barra .estado.limpo::before { content: "✓ "; color: var(--acento); }
+  .btn { height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--borda2); background: var(--card); color: var(--txt); font-weight: 700; font-size: 13.5px; }
+  .btn.prim { background: var(--acento); border-color: var(--acento); color: var(--acento-txt); }
+  .btn.sujo { background: var(--aviso-bg); border-color: var(--aviso-b); color: var(--aviso-txt); }
+  #btn-menu { width: 34px; padding: 0; font-size: 18px; line-height: 1; }
+
+  #ecra { position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--barra-h) + env(safe-area-inset-top)); }
+  #ecra iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+
+  /* ecrãs próprios (arranque, escolher base) */
+  .painel { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto;
+    padding: calc(env(safe-area-inset-top) + 28px) 20px calc(env(safe-area-inset-bottom) + 28px); }
+  .painel .caixa { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .logo { width: 56px; height: 56px; border-radius: 14px; display: block; }
+  h1 { font-size: 26px; margin: 6px 0 0; letter-spacing: -.02em; }
+  .sub { color: var(--suave); margin: 0; font-size: 14px; }
+  .cartao { background: var(--card); border: 1px solid var(--linha); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .cartao h2 { font-size: 15px; margin: 0; }
+  .cartao p { margin: 0; color: var(--suave); font-size: 13.5px; }
+  .grande { height: 48px; border-radius: 12px; font-size: 15.5px; width: 100%; }
+  .passos { margin: 0; padding-left: 18px; color: var(--suave); font-size: 13.5px; }
+  .passos li + li { margin-top: 4px; }
+  .msg { padding: 11px 14px; border-radius: 12px; font-size: 14px; }
+  .msg.erro { background: var(--erro-bg); border: 1px solid var(--erro-b); color: var(--erro-txt); }
+  .msg.aviso { background: var(--aviso-bg); border: 1px solid var(--aviso-b); color: var(--aviso-txt); }
+  .versao { color: var(--suave); font-size: 12px; text-align: center; margin-top: 6px; }
+
+  #carregar .caixa { align-items: center; text-align: center; margin-top: 18vh; }
+  .roda { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--borda2); border-top-color: var(--acento); animation: gira 0.9s linear infinite; }
+  @keyframes gira { to { transform: rotate(360deg); } }
+  #espera { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: transparent; pointer-events: all; }
+  #espera .roda { background: var(--card); box-shadow: 0 0 0 10px var(--card); }
+
+  /* folhas em baixo (menu, ficheiro pronto) */
+  .fundo { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.45); }
+  .folha { position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; background: var(--card); border-top: 1px solid var(--borda2);
+    border-radius: 18px 18px 0 0; padding: 18px 16px calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; gap: 10px; }
+  .folha h2 { margin: 0 0 4px; font-size: 16px; }
+  .folha p { margin: 0; color: var(--suave); font-size: 13.5px; }
+</style>
+</head>
+<body>
+
+<div id="barra" class="oculto">
+  <div class="info"><span class="nome" id="b-nome">—</span><span class="estado" id="b-estado"></span></div>
+  <button class="btn" id="btn-exportar" type="button">Exportar</button>
+  <button class="btn" id="btn-menu" type="button" aria-label="Mais opções">⋯</button>
+</div>
+<div id="ecra"></div>
+<div id="espera" class="oculto"><div class="roda"></div></div>
+
+<!-- a preparar -->
+<section class="painel" id="carregar">
+  <div class="caixa">
+    <div class="roda"></div>
+    <h1 style="font-size:20px">A preparar a aplicação…</h1>
+    <p class="sub" id="carregar-txt">Na primeira vez descarrega cerca de 15 MB. Depois funciona sem internet.</p>
+    <div class="msg erro oculto" id="carregar-erro"></div>
+  </div>
+</section>
+
+<!-- escolher base -->
+<section class="painel oculto" id="inicio">
+  <div class="caixa">
+    <img class="logo" src="icone-180.png" alt="">
+    <h1>Controlo Empresa</h1>
+    <p class="sub">A mesma aplicação do PC, no telemóvel. Os dados ficam só neste iPhone: nada é enviado para a internet.</p>
+    <div class="msg aviso oculto" id="inicio-aviso"></div>
+    <div class="cartao">
+      <h2>Abrir a base de dados</h2>
+      <ol class="passos">
+        <li>Toque em <b>Escolher ficheiro</b> e escolha o ficheiro <b>.db</b> da aplicação.</li>
+        <li>No fim, toque em <b>Exportar</b> e guarde-o de novo no mesmo sítio, a substituir o antigo.</li>
+      </ol>
+      <button class="btn prim grande" id="btn-abrir" type="button">Escolher ficheiro</button>
+    </div>
+    <div class="cartao" id="cartao-continuar">
+      <h2>Continuar</h2>
+      <p id="continuar-txt"></p>
+      <button class="btn grande" id="btn-continuar" type="button">Continuar com esta base</button>
+    </div>
+    <div class="cartao">
+      <h2>Experimentar</h2>
+      <p>Cria uma base com dados inventados, para ver como funciona sem mexer na verdadeira.</p>
+      <button class="btn grande" id="btn-demo" type="button">Usar dados de demonstração</button>
+    </div>
+    <div class="msg erro oculto" id="inicio-erro"></div>
+    <div class="versao" id="versao"></div>
+  </div>
+</section>
+
+<input type="file" id="ficheiro" class="oculto">
+
+<!-- menu -->
+<div class="fundo oculto" id="menu-fundo"></div>
+<div class="folha oculto" id="menu">
+  <h2>Base de dados</h2>
+  <p id="menu-txt"></p>
+  <button class="btn prim grande" id="m-exportar" type="button">Exportar (guardar no Drive)</button>
+  <button class="btn grande" id="m-outra" type="button">Abrir outra base</button>
+  <button class="btn grande" id="m-fechar" type="button">Fechar</button>
+</div>
+
+<!-- ficheiro pronto (quando o iPhone não deixa partilhar logo) -->
+<div class="fundo oculto" id="pronto-fundo"></div>
+<div class="folha oculto" id="pronto">
+  <h2 id="pronto-tit">Ficheiro pronto</h2>
+  <p id="pronto-txt"></p>
+  <button class="btn prim grande" id="p-guardar" type="button">Guardar / partilhar</button>
+  <button class="btn grande" id="p-fechar" type="button">Fechar</button>
+</div>
+
+<script src="pyodide/pyodide.js"></script>
+<script>
+"use strict";
+/* Versão para telemóvel do Controlo Empresa.
+   A aplicação Flask do PC corre aqui, no browser, com o Pyodide (Python em WebAssembly). Sem servidor e sem internet:
+   a base de dados é escolhida pelo utilizador, fica guardada no telemóvel e é exportada no fim. */
+const VERSAO_TELEMOVEL = "1.9.0-t2";
+const PREFIXO = location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
+const BASE = location.origin + PREFIXO + "/";
+const PASTA_DADOS = "/dados";
+const $ = (id) => document.getElementById(id);
+
+const Controlo = window.Controlo = { prefixo: PREFIXO, base: BASE, urlAtual: BASE, fragAtual: "" };
+let py = null, ponte = null, codigoPonte = "";
+let base = null;            // { nome, alterado, exportadoEm }
+const historico = [];       // páginas visitadas (para «voltar»)
+
+/* ---------------- memória do telemóvel (IndexedDB) ---------------- */
+function idb() {
+  return new Promise((ok, falha) => {
+    const r = indexedDB.open("controlo-telemovel", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => falha(r.error);
+  });
+}
+async function idbLer(chave) {
+  const db = await idb();
+  return new Promise((ok, falha) => { const t = db.transaction("kv").objectStore("kv").get(chave); t.onsuccess = () => ok(t.result); t.onerror = () => falha(t.error); });
+}
+async function idbGuardar(chave, valor) {
+  const db = await idb();
+  return new Promise((ok, falha) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(valor, chave); t.oncomplete = () => ok(); t.onerror = () => falha(t.error); });
+}
+async function idbApagar(chave) {
+  const db = await idb();
+  return new Promise((ok) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").delete(chave); t.oncomplete = () => ok(); t.onerror = () => ok(); });
+}
+
+function caminhoBase() { return PASTA_DADOS + "/" + base.nome; }
+function bytesBase() { return py.FS.readFile(caminhoBase()); }
+
+async function guardarNoTelemovel() {
+  if (!base) return;
+  await idbGuardar("base", { nome: base.nome, bytes: bytesBase(), alterado: base.alterado, exportadoEm: base.exportadoEm || null, empresa: base.empresa || "" });
+}
+
+/* ---------------- arranque ---------------- */
+async function arrancar() {
+  if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  try {
+    py = await loadPyodide({ indexURL: BASE + "pyodide/" });
+    $("carregar-txt").textContent = "A carregar a aplicação…";
+    await py.loadPackage(["sqlite3", "markupsafe", "jinja2", "click"], { messageCallback: () => {} });
+    const sitePkgs = py.runPython("import sysconfig; sysconfig.get_paths()['purelib']");
+    py.unpackArchive(await (await fetch(BASE + "pacotes/bibliotecas.zip")).arrayBuffer(), "zip", { extractDir: sitePkgs });
+    py.unpackArchive(await (await fetch(BASE + "pacotes/aplicacao.zip")).arrayBuffer(), "zip", { extractDir: "/app" });
+    codigoPonte = await (await fetch(BASE + "ponte-pagina.js")).text();
+    py.FS.mkdirTree(PASTA_DADOS);
+    py.runPython("import sys\nif '/app' not in sys.path: sys.path.insert(0, '/app')");
+    ponte = py.pyimport("ponte");
+    ponte.configurar(PREFIXO);
+    $("versao").textContent = "Controlo v" + ponte.VERSAO + " · telemóvel " + VERSAO_TELEMOVEL;
+  } catch (e) {
+    $("carregar-erro").textContent = "Não consegui preparar a aplicação: " + e + ". Verifique a internet e abra outra vez (na primeira vez é preciso internet).";
+    $("carregar-erro").classList.remove("oculto");
+    return;
+  }
+  const guardada = await idbLer("base").catch(() => null);
+  if (guardada && guardada.bytes) {
+    try {
+      py.FS.writeFile(PASTA_DADOS + "/" + guardada.nome, guardada.bytes);
+      base = { nome: guardada.nome, alterado: !!guardada.alterado, exportadoEm: guardada.exportadoEm, empresa: guardada.empresa };
+      base.empresa = ponte.abrir_base(caminhoBase());
+      $("carregar").classList.add("oculto");
+      mostrarApp();
+      Controlo.navegar("GET", BASE);
+      return;
+    } catch (e) { console.error("restaurar base", e); base = null; }
+  }
+  $("carregar").classList.add("oculto");
+  mostrarInicio();
+}
+
+/* ---------------- ecrãs ---------------- */
+function mostrarInicio(aviso) {
+  $("inicio").classList.remove("oculto");
+  $("barra").classList.add("oculto");
+  $("ecra").innerHTML = "";
+  $("inicio-erro").classList.add("oculto");
+  $("inicio-aviso").textContent = aviso || "";
+  $("inicio-aviso").classList.toggle("oculto", !aviso);
+  $("cartao-continuar").classList.toggle("oculto", !base);
+  if (base) $("continuar-txt").textContent = base.nome + (base.alterado ? " — tem alterações por exportar." : ".");
+}
+
+function mostrarApp() {
+  $("inicio").classList.add("oculto");
+  $("barra").classList.remove("oculto");
+  atualizarBarra();
+}
+
+function quando(d) {
+  if (!d) return "";
+  const t = new Date(d), h = new Date();
+  const hh = t.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
+  return t.toDateString() === h.toDateString() ? "hoje às " + hh : t.toLocaleDateString("pt-PT") + " " + hh;
+}
+
+function atualizarBarra() {
+  if (!base) return;
+  $("b-nome").textContent = base.nome;
+  const e = $("b-estado");
+  if (base.alterado) { e.textContent = "Alterações por exportar"; e.className = "estado sujo"; }
+  else { e.textContent = base.exportadoEm ? "Exportada " + quando(base.exportadoEm) : "Sem alterações"; e.className = "estado limpo"; }
+  $("btn-exportar").classList.toggle("sujo", !!base.alterado);
+  $("menu-txt").textContent = base.nome + (base.alterado ? " · tem alterações que ainda não estão no Drive." : " · sem alterações por exportar.");
+  // o tema escolhido nas Configurações da aplicação vale também para esta barra
+  let tema = null; try { tema = localStorage.getItem("tema"); } catch (e) {}
+  if (tema === "claro") document.documentElement.dataset.tema = "claro"; else delete document.documentElement.dataset.tema;
+  $("cor-tema").setAttribute("content", tema === "claro" ? "#eef2f6" : "#0e151c");
+}
+
+/* ---------------- navegação dentro da aplicação ---------------- */
+function mostrarPagina(html, url, frag) {
+  Controlo.urlAtual = BASE + url.replace(/^\//, "");
+  Controlo.fragAtual = frag || "";
+  const injetar = "<script>" + codigoPonte + "<\/script>";
+  html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + injetar) : injetar + html;
+  const velho = $("ecra").querySelector("iframe");
+  const novo = document.createElement("iframe");
+  novo.setAttribute("title", "Controlo Empresa");
+  $("ecra").appendChild(novo);
+  const d = novo.contentDocument;
+  d.open(); d.write(html); d.close();
+  if (velho) velho.remove();
+  novo.addEventListener("load", atualizarBarra);
+}
+
+async function lerFormulario(fd) {
+  const campos = [], ficheiros = [];
+  for (const [k, v] of fd.entries()) {
+    if (typeof v === "string") campos.push([k, v]);
+    else if (v && v.size) ficheiros.push([k, v.name, v.type, new Uint8Array(await v.arrayBuffer())]);
+  }
+  return { campos, ficheiros };
+}
+
+function espera(sim) { $("espera").classList.toggle("oculto", !sim); }
+
+// Corre a seguir, para o script da página atual acabar antes de a página ser trocada
+Controlo.navegar = function (metodo, href, fd, semHistorico) { setTimeout(() => navegarJa(metodo, href, fd, semHistorico), 0); };
+function navegarJa(metodo, href, fd, semHistorico) {
+  const comFicheiros = fd && [...fd.values()].some((v) => typeof v !== "string" && v.size);
+  if (comFicheiros) {  // ler um ficheiro escolhido (ex.: mapa de exploração) é assíncrono
+    espera(true);
+    lerFormulario(fd).then((f) => fazerPedido(metodo, href, f, semHistorico)).finally(() => espera(false));
+  } else {
+    const f = { campos: [], ficheiros: [] };
+    if (fd) for (const [k, v] of fd.entries()) if (typeof v === "string") f.campos.push([k, v]);
+    fazerPedido(metodo, href, f, semHistorico);
+  }
+}
+
+Controlo.voltar = function () {
+  if (historico.length > 1) { historico.pop(); Controlo.navegar("GET", historico[historico.length - 1], null, true); }
+};
+
+function fazerPedido(metodo, href, f, semHistorico) {
+  let meta, corpo;
+  try {
+    const r = ponte.pedido(metodo, new URL(href, BASE).href, py.toPy(f.campos), py.toPy(f.ficheiros));
+    const par = r.toJs(); r.destroy();
+    meta = JSON.parse(par[0]); corpo = par[1];
+  } catch (e) {
+    mostrarPagina("<!doctype html><meta name=viewport content='width=device-width'><body style='font-family:system-ui;padding:20px;background:#0b1015;color:#fecaca'><h2>Erro na aplicação</h2><pre style='white-space:pre-wrap;font-size:12px'>" +
+      String(e).replace(/[<&]/g, (c) => ({ "<": "&lt;", "&": "&amp;" }[c])) + "</pre><p><a style='color:#6ee7b7' href='" + BASE + "'>Voltar ao Painel</a></p>", "/", "");
+    return;
+  }
+  if (meta.alterou) {
+    base.alterado = true;
+    guardarNoTelemovel().catch(() => {});
+    atualizarBarra();
+  }
+  if (meta.ficheiro) { partilhar(corpo, meta.ficheiro, meta.tipo); return; }   // Excel, cópia de segurança…
+  if (meta.caminho === "/bd") { pedirFecho(); return; }                         // «Trocar» de base de dados
+  const html = new TextDecoder().decode(corpo);
+  const url = meta.url + (meta.frag ? "#" + meta.frag : "");
+  const final = BASE + meta.url.replace(/^\//, "");
+  if (!semHistorico && historico[historico.length - 1] !== final) historico.push(final);
+  if (historico.length > 40) historico.shift();
+  mostrarPagina(html, meta.url, meta.frag || new URL(href, BASE).hash.replace("#", ""));
+}
+
+/* ---------------- ficheiros: abrir, exportar, partilhar ---------------- */
+let aPartilhar = null;
+async function partilhar(bytes, nome, tipo, depois) {
+  const f = new File([bytes], nome, { type: tipo || "application/octet-stream" });
+  if (navigator.canShare && navigator.canShare({ files: [f] })) {
+    try { await navigator.share({ files: [f] }); if (depois) depois(); return; }
+    catch (e) {
+      if (e && e.name === "AbortError") return;     // cancelado pelo utilizador
+      aPartilhar = { f, depois };                     // o iPhone pede um toque: mostra o botão
+      $("pronto-tit").textContent = "Ficheiro pronto";
+      $("pronto-txt").textContent = nome;
+      abrirFolha("pronto");
+      return;
+    }
+  }
+  descarregar(f); if (depois) depois();
+}
+function descarregar(f) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+}
+$("p-guardar").onclick = async () => {
+  if (!aPartilhar) return;
+  const { f, depois } = aPartilhar;
+  try { await navigator.share({ files: [f] }); fecharFolhas(); if (depois) depois(); }
+  catch (e) { if (!e || e.name !== "AbortError") { descarregar(f); fecharFolhas(); if (depois) depois(); } }
+};
+
+function exportar() {
+  if (!base) return;
+  fecharFolhas();
+  partilhar(bytesBase(), base.nome, "application/octet-stream", () => {
+    base.alterado = false; base.exportadoEm = new Date().toISOString();
+    guardarNoTelemovel().catch(() => {}); atualizarBarra();
+  });
+}
+$("btn-exportar").onclick = exportar;
+$("m-exportar").onclick = exportar;
+
+$("btn-abrir").onclick = () => $("ficheiro").click();
+$("ficheiro").onchange = async (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  const erro = $("inicio-erro");
+  erro.classList.add("oculto");
+  if (base && base.alterado && !confirm("A base «" + base.nome + "» tem alterações que ainda não exportou e que se perdem ao abrir «" + f.name + "». Continuar?")) return;
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  const cab = new TextDecoder().decode(bytes.slice(0, 15));
+  if (cab !== "SQLite format 3") { erro.textContent = "«" + f.name + "» não é uma base de dados da aplicação (escolha o ficheiro .db da pasta dados)."; erro.classList.remove("oculto"); return; }
+  try {
+    const nome = f.name.replace(/[\\/]/g, "_");
+    if (base) { try { py.FS.unlink(caminhoBase()); } catch (e) {} }
+    py.FS.writeFile(PASTA_DADOS + "/" + nome, bytes);
+    base = { nome, alterado: false, exportadoEm: null };
+    base.empresa = ponte.abrir_base(caminhoBase());
+    // se a base era de uma versão anterior, a aplicação atualizou-a: fica marcada para exportar
+    const depois = bytesBase();
+    if (depois.length !== bytes.length || depois.some((b, i) => b !== bytes[i])) base.alterado = true;
+    await guardarNoTelemovel();
+    historico.length = 0;
+    mostrarApp();
+    Controlo.navegar("GET", BASE);
+  } catch (e) {
+    base = null;
+    erro.textContent = "Não consegui abrir «" + f.name + "»: " + e;
+    erro.classList.remove("oculto");
+  }
+};
+
+$("btn-continuar").onclick = () => {
+  try { base.empresa = ponte.abrir_base(caminhoBase()); } catch (e) { $("inicio-erro").textContent = "Não consegui abrir: " + e; $("inicio-erro").classList.remove("oculto"); return; }
+  mostrarApp(); historico.length = 0; Controlo.navegar("GET", BASE);
+};
+
+$("btn-demo").onclick = async () => {
+  if (base && base.alterado && !confirm("A base «" + base.nome + "» tem alterações por exportar, que se perdem se abrir a demonstração. Continuar?")) return;
+  espera(true);
+  try {
+    if (base) { try { py.FS.unlink(caminhoBase()); } catch (e) {} }
+    base = { nome: "demonstracao.db", alterado: false, exportadoEm: null };
+    base.empresa = ponte.criar_demo(caminhoBase());
+    await guardarNoTelemovel();
+    historico.length = 0;
+    mostrarApp();
+    Controlo.navegar("GET", BASE);
+  } catch (e) {
+    $("inicio-erro").textContent = "Não consegui criar a demonstração: " + e; $("inicio-erro").classList.remove("oculto");
+  } finally { espera(false); }
+};
+
+/* ---------------- menu ---------------- */
+function abrirFolha(id) { $(id).classList.remove("oculto"); $(id + "-fundo").classList.remove("oculto"); }
+function fecharFolhas() { ["menu", "pronto"].forEach((id) => { $(id).classList.add("oculto"); $(id + "-fundo").classList.add("oculto"); }); }
+$("btn-menu").onclick = () => { atualizarBarra(); abrirFolha("menu"); };
+$("menu-fundo").onclick = fecharFolhas;
+$("pronto-fundo").onclick = fecharFolhas;
+$("p-fechar").onclick = fecharFolhas;
+$("m-fechar").onclick = fecharFolhas;
+$("m-outra").onclick = () => { fecharFolhas(); pedirFecho(); };
+
+function pedirFecho() {
+  mostrarInicio(base && base.alterado ? "«" + base.nome + "» tem alterações por exportar. Pode continuar com ela ou exportá-la primeiro." : "");
+}
+
+arrancar();
+</script>
+</body>
+</html>
