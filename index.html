@@ -46,7 +46,8 @@
   .btn.sujo { background: var(--aviso-bg); border-color: var(--aviso-b); color: var(--aviso-txt); }
   #btn-menu { width: 34px; padding: 0; font-size: 18px; line-height: 1; }
 
-  #ecra { position: fixed; left: 0; right: 0; bottom: 0; top: calc(var(--barra-h) + env(safe-area-inset-top)); }
+  #ecra { position: fixed; left: 0; right: 0; bottom: 0; top: env(safe-area-inset-top); }
+  #sab { position: fixed; left: 0; bottom: 0; width: 1px; height: env(safe-area-inset-bottom); visibility: hidden; pointer-events: none; }
   #ecra iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
 
   /* ecrãs próprios (arranque, escolher base) */
@@ -89,6 +90,7 @@
   <button class="btn" id="btn-menu" type="button" aria-label="Mais opções">⋯</button>
 </div>
 <div id="ecra"></div>
+<div id="sab"></div>
 <div id="espera" class="oculto"><div class="roda"></div></div>
 
 <!-- a preparar -->
@@ -158,7 +160,7 @@
 /* Versão para telemóvel do Controlo Empresa.
    A aplicação Flask do PC corre aqui, no browser, com o Pyodide (Python em WebAssembly). Sem servidor e sem internet:
    a base de dados é escolhida pelo utilizador, fica guardada no telemóvel e é exportada no fim. */
-const VERSAO_TELEMOVEL = "1.19.6-t3";
+const VERSAO_TELEMOVEL = "1.19.7-t3";
 const PREFIXO = location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
 const BASE = location.origin + PREFIXO + "/";
 const PASTA_DADOS = "/dados";
@@ -251,7 +253,7 @@ function mostrarInicio(aviso) {
 
 function mostrarApp() {
   $("inicio").classList.add("oculto");
-  $("barra").classList.remove("oculto");
+  // v1.19.7: a aplicação tem o seu próprio cabeçalho e a barra em baixo; exportar fica no Início e em «Mais»
   atualizarBarra();
 }
 
@@ -316,6 +318,13 @@ function navegarJa(metodo, href, fd, semHistorico) {
     fazerPedido(metodo, href, f, semHistorico);
   }
 }
+
+// usados pelas páginas da aplicação (Início e «Mais»)
+Controlo.exportar = function () { exportar(); };
+Controlo.outraBase = function () { pedirFecho(); };
+Controlo.estado = function () { return base ? { nome: base.nome, alterado: !!base.alterado, exportadoEm: base.exportadoEm, quando: quando(base.exportadoEm) } : null; };
+Controlo.tema = function () { atualizarBarra(); };
+Controlo.insetBottom = function () { return Math.round($("sab").getBoundingClientRect().height); };
 
 Controlo.voltar = function () {
   if (historico.length > 1) { historico.pop(); Controlo.navegar("GET", historico[historico.length - 1], null, true); }
@@ -382,6 +391,7 @@ function exportar() {
   partilhar(bytesBase(), base.nome, "application/octet-stream", () => {
     base.alterado = false; base.exportadoEm = new Date().toISOString();
     guardarNoTelemovel().catch(() => {}); atualizarBarra();
+    Controlo.navegar("GET", Controlo.urlAtual + (Controlo.fragAtual ? "#" + Controlo.fragAtual : ""), null, true);  // a página mostra o novo estado
   });
 }
 $("btn-exportar").onclick = exportar;
