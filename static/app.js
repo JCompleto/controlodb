@@ -1,4 +1,7 @@
 /* Controlo Empresa — comportamento dos formulários e da lista. */
+// v1.10.0: o que prepara o conteúdo da página (balões «i», avisos…) regista-se aqui, para voltar a correr
+// quando o conteúdo é trocado sem recarregar (confirmar pago/recebido no Painel e nos Lançamentos)
+window.CE = window.CE || { ini: [], iniciar: function (raiz) { this.ini.forEach(function (f) { f(raiz); }); } };
 (function () {
   "use strict";
 
@@ -166,9 +169,10 @@
   }
 
   // ---------- pesquisa no diário ----------
-  var q = document.getElementById("filtro-texto");
-  if (q) {
-    q.addEventListener("input", function () {
+  document.addEventListener("input", function (ev) {
+    var q = ev.target;
+    if (!q || q.id !== "filtro-texto") return;
+    (function () {
       var t = q.value.trim().toLowerCase();
       document.querySelectorAll("#diario tr[data-txt]").forEach(function (tr) { tr.hidden = t && tr.dataset.txt.indexOf(t) < 0; });
       // esconde o cabeçalho de um mês quando não sobra nenhuma linha dele
@@ -183,8 +187,8 @@
       var tv = document.getElementById("tot-valor"), tn = document.getElementById("tot-n");
       if (tv) tv.textContent = soma.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €";
       if (tn) tn.textContent = n;
-    });
-  }
+    })();
+  });
 })();
 
 // v4: janela de confirmação (ex.: «Trocar» de base de dados)
@@ -193,6 +197,7 @@
   document.addEventListener("click", function (e) {
     var abrir = e.target.closest("[data-abrir]");
     if (abrir) {
+      if (abrir.tagName === "A" && !(e.ctrlKey || e.metaKey || e.shiftKey)) e.preventDefault();  // a janela em vez da página
       var d = document.getElementById(abrir.getAttribute("data-abrir"));
       if (d && d.showModal) { d.showModal(); var b = d.querySelector("[data-fechar]"); if (b) b.focus(); }
       else if (d) { var f = d.querySelector("form"); if (f && window.confirm("Tem a certeza de que quer trocar de base de dados?")) f.submit(); }
@@ -208,12 +213,14 @@
 (function () {
   "use strict";
   function fechar(t) { if (!t || t.classList.contains("sai")) return; t.classList.add("sai"); setTimeout(function () { t.remove(); }, 320); }
-  document.querySelectorAll(".toast").forEach(function (t) {
+  function preparar(raiz) { raiz.querySelectorAll(".toast").forEach(function (t) {
     var tempo = t.classList.contains("erro") ? 12000 : 5000, id = setTimeout(function () { fechar(t); }, tempo);
     t.addEventListener("mouseenter", function () { clearTimeout(id); });
     t.addEventListener("mouseleave", function () { id = setTimeout(function () { fechar(t); }, 2500); });
     var x = t.querySelector(".toast-x"); if (x) x.addEventListener("click", function () { fechar(t); });
-  });
+  }); }
+  preparar(document);
+  window.CE.ini.push(preparar);
 })();
 
 
@@ -270,7 +277,8 @@
   }
 
   var n = 0;
-  document.querySelectorAll("main p.nota:not(.fica)").forEach(function (nota) {
+  function preparar(raiz) { raiz.querySelectorAll("p.nota:not(.fica)").forEach(function (nota) {
+    if (!nota.closest("main") || nota.closest(".ajuda-balao")) return;
     var h = ancora(nota);
     if (!h) { nota.classList.add("fica"); return; }
     var w = h.querySelector(":scope > .ajuda-wrap");
@@ -294,7 +302,9 @@
       w.addEventListener("click", function (e) { if (e.target.closest(".ajuda-balao")) e.stopPropagation(); });
     }
     w.querySelector(".ajuda-balao").appendChild(nota);
-  });
+  }); }
+  preparar(document);
+  window.CE.ini.push(preparar);
   raiz.classList.add("ajuda-pronta");
   document.addEventListener("click", function () { fecharTodos(null); });
   document.addEventListener("keydown", function (e) {
@@ -366,17 +376,305 @@
 })();
 
 
-// v1.8.0: tema (Night Blue / Claro), guardado neste browser
+// v1.8.0: tema, guardado neste browser (v1.19.5: Night Blue, Claro, Aurora, Estação)
 (function () {
   "use strict";
+  var TEMAS = ["claro", "aurora", "estacao"];  // o Night Blue é o tema sem atributo
   var raiz = document.documentElement, ops = document.querySelectorAll('input[name="tema"]');
   if (!ops.length) return;
-  var atual = raiz.dataset.tema === "claro" ? "claro" : "night-blue";
+  var atual = TEMAS.indexOf(raiz.dataset.tema) >= 0 ? raiz.dataset.tema : "night-blue";
   ops.forEach(function (o) {
     o.checked = o.value === atual;
     o.addEventListener("change", function () {
-      if (o.value === "claro") raiz.dataset.tema = "claro"; else delete raiz.dataset.tema;
-      try { localStorage.setItem("tema", o.value === "claro" ? "claro" : "night-blue"); } catch (e) { /* sem memória: só nesta página */ }
+      var t = TEMAS.indexOf(o.value) >= 0 ? o.value : "night-blue";
+      if (t === "night-blue") delete raiz.dataset.tema; else raiz.dataset.tema = t;
+      try { localStorage.setItem("tema", t); } catch (e) { /* sem memória: só nesta página */ }
     });
   });
+})();
+
+
+// v1.10.0: confirmar «pago/recebido» (ou desfazer) sem recarregar a página toda: envia em segundo plano e troca só o
+// conteúdo, mantendo a posição. Se algo correr mal, envia da forma normal.
+(function () {
+  "use strict";
+  if (window.parent && window.parent !== window && window.parent.Controlo) return; // no telemóvel a ponte trata dos formulários
+  if (!window.fetch || !window.DOMParser) return;
+  var main = document.querySelector("main.conteudo");
+  if (!main) return;
+
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (e.defaultPrevented || !form.closest || !form.closest("details.est")) return;
+    e.preventDefault();
+    var botao = form.querySelector("button[type=submit]");
+    if (botao) botao.disabled = true;
+    var y = window.scrollY;
+    var rolagens = Array.prototype.map.call(main.querySelectorAll(".rolagem"), function (r) { return r.scrollTop; });
+    var filtro = document.getElementById("filtro-texto"), txt = filtro ? filtro.value : "";
+    fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        var u = new URL(r.url);
+        if (u.pathname !== location.pathname) { location.href = r.url; return null; } // foi para outra página (ex.: escolher a base)
+        return r.text();
+      })
+      .then(function (html) {
+        if (html === null) return;
+        var novo = new DOMParser().parseFromString(html, "text/html").querySelector("main.conteudo");
+        if (!novo) throw new Error("sem conteúdo");
+        main.innerHTML = novo.innerHTML;
+        window.CE.iniciar(main);
+        main.querySelectorAll(".rolagem").forEach(function (r, i) { if (rolagens[i]) r.scrollTop = rolagens[i]; });
+        var f2 = document.getElementById("filtro-texto");
+        if (f2 && txt) { f2.value = txt; f2.dispatchEvent(new Event("input", { bubbles: true })); }
+        window.scrollTo(0, y);
+      })
+      .catch(function () { if (botao) botao.disabled = false; HTMLFormElement.prototype.submit.call(form); });
+  });
+})();
+
+// v1.11.0: fatura ligada ao lançamento — escolher na pasta da empresa, carregar do computador ou tirar
+(function () {
+  "use strict";
+  var bloco = document.querySelector("[data-doc]");
+  if (!bloco) return;
+  var f = bloco.closest("form");
+  var campo = bloco.querySelector("input[name=documento]");
+  var ficheiro = bloco.querySelector("[data-doc-ficheiro]");
+  var nome = bloco.querySelector("[data-doc-nome]"), ext = bloco.querySelector("[data-doc-ext]");
+  var abrir = bloco.querySelector("[data-doc-abrir]"), tirar = bloco.querySelector("[data-doc-tirar]");
+  var escolher = bloco.querySelector("[data-doc-escolher]"), tit = document.getElementById("doc-tit");
+  var janela = document.querySelector("[data-doc-janela]");
+  var lista = janela.querySelector("[data-dj-lista]"), migalhas = janela.querySelector("[data-dj-migalhas]"), msg = janela.querySelector("[data-dj-msg]");
+
+  var dispensa = document.querySelector("[data-doc-dispensa]");
+  function extensao(n) { var p = String(n).split("."); return p.length > 1 ? p.pop().toUpperCase().slice(0, 4) : "?"; }
+  function mostrar(rel, carregado) {
+    var tem = !!(rel || carregado);
+    bloco.classList.toggle("tem", tem);
+    if (carregado) {
+      nome.textContent = carregado + " (vai para a pasta do mês ao guardar)";
+      ext.textContent = extensao(carregado);
+    } else {
+      nome.textContent = rel ? rel.split("/").join(" › ") : "Sem fatura ligada";
+      ext.textContent = rel ? extensao(rel) : "+";
+    }
+    if (tit) tit.firstChild.textContent = tem ? "Fatura ligada" : "Fatura";
+    abrir.hidden = !rel || !!carregado;
+    if (rel) abrir.href = bloco.dataset.fichUrl + "?p=" + encodeURIComponent(rel);
+    tirar.hidden = !tem;
+    if (dispensa) { dispensa.closest("label").hidden = tem; if (tem) dispensa.checked = false; }
+    escolher.textContent = tem ? "Trocar" : "Escolher na pasta";
+  }
+  ficheiro.addEventListener("change", function () {
+    if (ficheiro.files && ficheiro.files[0]) { campo.value = ""; mostrar("", ficheiro.files[0].name); }
+  });
+  tirar.addEventListener("click", function () { campo.value = ""; ficheiro.value = ""; mostrar("", ""); });
+
+  function valor(nomeCampo) { var e = f.elements[nomeCampo]; return e ? (e.value || "") : ""; }
+  function socio() {
+    var r = f.querySelector("input[name=pago_por]:checked");
+    return r ? (r.value === "socio" ? "1" : "0") : bloco.dataset.socio;
+  }
+  function erro(t) { msg.textContent = t; msg.hidden = false; }
+
+  function carregar(rel) {
+    msg.hidden = true;
+    fetch(bloco.dataset.pastaUrl + "?p=" + encodeURIComponent(rel || ""), { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.erro) { erro(d.erro); return; }
+        migalhas.textContent = "";
+        d.migalhas.forEach(function (m, i) {
+          if (i) { var s = document.createElement("span"); s.className = "dj-sep"; s.textContent = "›"; migalhas.appendChild(s); }
+          var b = document.createElement("button");
+          b.type = "button"; b.className = "dj-mig"; b.textContent = m.nome;
+          if (i === d.migalhas.length - 1) b.setAttribute("aria-current", "true");
+          b.addEventListener("click", function () { carregar(m.rel); });
+          migalhas.appendChild(b);
+        });
+        lista.textContent = "";
+        d.pastas.forEach(function (p) {
+          var li = document.createElement("li"), b = document.createElement("button");
+          b.type = "button"; b.className = "dj-item dj-pasta";
+          b.innerHTML = '<span class="dj-ico" aria-hidden="true"></span><span class="dj-n"></span>';
+          b.querySelector(".dj-n").textContent = p.nome;
+          b.addEventListener("click", function () { carregar(p.rel); });
+          li.appendChild(b); lista.appendChild(li);
+        });
+        d.ficheiros.forEach(function (p) {
+          var li = document.createElement("li"), b = document.createElement("button");
+          b.type = "button"; b.className = "dj-item dj-fich" + (p.rel === campo.value ? " atual" : "");
+          b.innerHTML = '<span class="dj-ext"></span><span class="dj-n"></span><span class="dj-kb"></span>';
+          b.querySelector(".dj-ext").textContent = extensao(p.nome);
+          b.querySelector(".dj-n").textContent = p.nome;
+          b.querySelector(".dj-kb").textContent = p.kb + " KB";
+          b.addEventListener("click", function () { campo.value = p.rel; ficheiro.value = ""; mostrar(p.rel, ""); janela.close(); });
+          var ver = document.createElement("a");
+          ver.className = "botao peq dj-ver"; ver.textContent = "Ver"; ver.target = "_blank"; ver.rel = "noopener";
+          ver.href = bloco.dataset.fichUrl + "?p=" + encodeURIComponent(p.rel);
+          li.appendChild(b); li.appendChild(ver); lista.appendChild(li);
+        });
+        if (!d.pastas.length && !d.ficheiros.length) erro("Esta pasta não tem PDFs nem imagens.");
+      })
+      .catch(function () { erro("Não consegui ler a pasta."); });
+  }
+
+  escolher.addEventListener("click", function () {
+    janela.showModal();
+    if (campo.value) { carregar(campo.value.split("/").slice(0, -1).join("/")); return; }
+    var mes = valor("mes"), data = valor("data");
+    var q = "?ano=" + encodeURIComponent(bloco.dataset.ano) + "&mes=" + encodeURIComponent(mes) + "&data=" + encodeURIComponent(data) + "&socio=" + socio();
+    fetch(bloco.dataset.sugUrl + q).then(function (r) { return r.json(); })
+      .then(function (d) { carregar(d.rel || ""); }).catch(function () { carregar(""); });
+  });
+})();
+
+// v1.11.0: conta do sócio — total do reembolso conforme as despesas marcadas
+(function () {
+  "use strict";
+  var f = document.querySelector("form[data-reembolso]");
+  if (!f) return;
+  var out = f.querySelector("[data-reembolso-total]");
+  function eur(x) { var p = Math.abs(x).toFixed(2).split("."); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, "."); return p[0] + "," + p[1] + " €"; }
+  function somar() {
+    var t = 0;
+    f.querySelectorAll("input[data-valor]:checked").forEach(function (c) { t += parseFloat(c.dataset.valor) || 0; });
+    out.textContent = eur(t);
+  }
+  f.addEventListener("change", somar);
+})();
+
+// v1.14.0: primeiro ano de uma base nova — mostra o saldo inicial que vai ficar guardado
+(function () {
+  "use strict";
+  var f = document.querySelector("form[data-primeiro-ano]");
+  if (!f) return;
+  function num(t) {
+    var s = String(t || "").replace(/€|\s/g, "");
+    if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+    var v = parseFloat(s);
+    return isFinite(v) ? v : 0;
+  }
+  function eur(x) { var p = Math.abs(x).toFixed(2).split("."); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, "."); return (x < -0.004 ? "-" : "") + p[0] + "," + p[1] + " €"; }
+  var real = f.querySelector("[data-pa=real]"), est = f.querySelector("[data-pa=est]");
+  var ano = f.elements.novo, data = f.elements.data;
+  function calc() {
+    var b = num(f.elements.banco.value), c = num(f.elements.capital.value), s = num(f.elements.socio.value);
+    real.textContent = f.elements.banco.value ? eur(b - c) : "—";
+    est.textContent = f.elements.banco.value ? eur(b - c - s) : "—";
+  }
+  ano.addEventListener("change", function () { if (/^\d{4}$/.test(ano.value) && (!data.value || data.value.slice(5) === "01-01")) data.value = ano.value + "-01-01"; });
+  f.addEventListener("input", calc); calc();
+})();
+
+// v1.19.1: «Lançamento» desfoca a página e abre a lista vertical dos tipos
+(function () {
+  "use strict";
+  var veu = document.querySelector(".nb-veu");
+  function aberta() { return document.querySelector(".nb-wrap.aberto"); }
+  function fechar(focar) {
+    var w = aberta();
+    if (!w) return;
+    w.classList.remove("aberto");
+    w.querySelector(".nb-lista").hidden = true;
+    w.querySelector(".nb-btn").setAttribute("aria-expanded", "false");
+    if (veu) veu.hidden = true;
+    document.documentElement.classList.remove("nb-ativo");
+    if (focar) w.querySelector(".nb-btn").focus();
+  }
+  function abrir(w) {
+    fechar(false);
+    w.classList.add("aberto");
+    w.querySelector(".nb-lista").hidden = false;
+    w.querySelector(".nb-btn").setAttribute("aria-expanded", "true");
+    if (veu) veu.hidden = false;
+    document.documentElement.classList.add("nb-ativo");
+    var a = w.querySelector(".nb-op.sugerido") || w.querySelector(".nb-op");
+    if (a) a.focus();
+  }
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".nb-btn");
+    if (btn) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      var w = btn.closest(".nb-wrap");
+      if (w.classList.contains("aberto")) fechar(true); else abrir(w);
+      return;
+    }
+    if (aberta() && !e.target.closest(".nb-lista")) fechar(false);
+  });
+  document.addEventListener("keydown", function (e) {
+    var w = aberta();
+    if (!w) return;
+    if (e.key === "Escape") { e.preventDefault(); fechar(true); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      var ops = Array.prototype.slice.call(w.querySelectorAll(".nb-op")), i = ops.indexOf(document.activeElement);
+      e.preventDefault();
+      ops[(i + (e.key === "ArrowDown" ? 1 : -1) + ops.length) % ops.length].focus();
+    }
+  });
+})();
+
+// v1.19.4: bloco Contas — ao clicar num valor, a página desfoca (como no «Lançamento») e a lista do que o forma
+// cai por baixo da linha clicada, que fica nítida. Fecha ao clicar fora, com Esc ou voltando a clicar.
+(function () {
+  "use strict";
+  var veu = document.querySelector(".nb-veu");
+  var alvo = null, lista = null;
+  function fechar(focar) {
+    if (!alvo) return;
+    lista.hidden = true;
+    alvo.classList.remove("bv-alvo");
+    alvo.setAttribute("aria-expanded", "false");
+    if (veu) veu.hidden = true;
+    if (focar) alvo.focus();
+    alvo = lista = null;
+  }
+  function posicionar() {
+    if (!alvo) return;
+    var r = alvo.getBoundingClientRect(), w = lista.offsetWidth;
+    var esq = Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - w - 16));
+    lista.style.left = esq + "px";
+    // a seta do balão aponta para o início do texto da linha clicada
+    lista.style.setProperty("--seta", Math.max(14, Math.min(w - 30, r.left + window.scrollX - esq + 24)) + "px");
+    lista.style.top = (r.bottom + window.scrollY + 12) + "px";
+  }
+  function abrir(a) {
+    fechar(false);
+    var l = document.getElementById(a.getAttribute("data-balao"));
+    if (!l) return;
+    // depois de uma atualização parcial do Painel pode haver uma cópia antiga já mudada para o fim da página
+    Array.prototype.forEach.call(document.querySelectorAll("body > .bv-lista"), function (x) { if (x !== l && x.id === l.id) x.remove(); });
+    if (l.parentNode !== document.body) document.body.appendChild(l);
+    alvo = a; lista = l;
+    a.classList.add("bv-alvo");
+    a.setAttribute("aria-expanded", "true");
+    if (veu) veu.hidden = false;
+    l.hidden = false;
+    posicionar();
+    var p = l.querySelector(".bv-op") || l.querySelector(".bv-link");
+    if (p) p.focus({ preventScroll: true });
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-balao]");
+    if (a) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      if (a === alvo) fechar(true); else abrir(a);
+      return;
+    }
+    if (alvo && !e.target.closest(".bv-lista")) fechar(false);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (!alvo) return;
+    if (e.key === "Escape") { e.preventDefault(); fechar(true); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      var ops = Array.prototype.slice.call(lista.querySelectorAll(".bv-op, .bv-link")), i = ops.indexOf(document.activeElement);
+      e.preventDefault();
+      ops[(i + (e.key === "ArrowDown" ? 1 : -1) + ops.length) % ops.length].focus();
+    }
+  });
+  window.addEventListener("resize", posicionar);
 })();
